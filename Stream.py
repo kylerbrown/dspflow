@@ -21,11 +21,8 @@ class ArfStreamer():
                         else:
                             chunk = length - offset
                         print("reading new batch")
-                        # We want to yield a column vector.
                         buffer = dataset[offset:offset+chunk]
                         yield buffer
-                        # for b in buffer:
-                        #     yield b
                         offset += chunk
             return Stream(gen(filename, path, chunk_size))
 
@@ -116,7 +113,6 @@ class Stream():
 
     #passes
     def map(self, func, chunk_size=1000000, *args, **kwargs):
-        mapped_head = func(self.head, *args, **kwargs)
         return Stream((func(el, *args, **kwargs)
                     for el in self.get_iter(chunk_size)))
 
@@ -183,8 +179,9 @@ merged = Stream.merge(stm1, stm2)
 
 # Stream can be either 1-dimensional, representing
 # one channel with respect to time, or it can be
-# 2-dimensional, with columns representing channels 
-# and rows representing time.
+# 2-dimensional, with columns representing channels and rows representing time.
+# In case of chunks, they are 1 dimension higher than the original data,
+# so they can be 3-dimensional.
 # The vertical direction represents time, horizontal represent channels.
 # Thus n-th element of the Stream will be either a number
 # or a 1-d array at time n.
