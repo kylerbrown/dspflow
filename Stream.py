@@ -4,29 +4,46 @@ import arf
 
 
 class ArfStreamer():
-    def open(filename, path, chunk_size=500000):
-            def gen(filename, path, chunk_size):
-                with arf.open_file(filename) as file:
-                    path = path.split("/")
-                    if path[0]=="":
-                        path = path[1:]
-                    dataset = file
-                    for p in path:
-                        dataset = dataset[p]
-                    length = len(dataset)
-                    offset = 0
-                    while offset < length:
-                        if length - offset > chunk_size:
-                            chunk = chunk_size
-                        else:
-                            chunk = length - offset
-                        print("reading new batch")
-                        buffer = dataset[offset:offset+chunk]
-                        yield buffer
-                        offset += chunk
-            return Stream(gen(filename, path, chunk_size))
+    """ Wraps a h5py.File object. Works inside a with statement,
+        so that it's never left opened. You can access the File
+        methods using `astm.file.method()`
+    """
+    def __init__(self, filename):
+        self.filename = filename
+
+    def __enter__(self):
+        self.file = arf.open_file(self.filename)
+        return self
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        self.file.close()
+
+    
+    def stream_channel(self, path, chunk_size=1000000):
+        """ Returns a Stream object wrapping the dataset at `path`.
+            `chunk_size` is the size of the chunk in which values are yielded;
+            the bigger the better, as long as it fits in the memory
+        """
+        def gen(path, chunk_size):
+            dataset = self.file[path]
+            length = len(dataset)
+            offset = 0
+            while offset < length:
+                if length - offset > chunk_size:
+                    chunk = chunk_size
+                else:
+                    chunk = length - offset
+                print("processing new batch {0}".format(offset))
+                buffer = dataset[offset:offset+chunk]
+                yield buffer
+                offset += chunk
+        return Stream(gen(path, chunk_size))
+
 
     def save(stream, filename, path, chunk_size=1000000):
+        """ Saves a Stream object to an .arf file.
+            Can't be called by an instance of ArfStreamer.
+        """
         with arf.open_file(filename, 'w') as file:
             path = path.split("/")
             dst_name = path[-1]
@@ -35,11 +52,9 @@ class ArfStreamer():
             # TODO check if already exists
             
             #Get first batch of data
-            # data = stream.readElements(chunk_size)
             data = stream.read(chunk_size)
             dst = arf.create_dataset(grp, dst_name, data,
                 maxshape=(None,), sampling_rate=40000)
-            # dst = grp.create_dataset(dst_name, data=data, maxshape=(None,))
             while True:
                 data = stream.read(chunk_size)
                 if len(data) == 0:
@@ -77,6 +92,9 @@ class Stream():
                 return
 
     def get_iter(self, numPerIter=1):
+        """ Return an iterator for the stream, `numPerIter` is
+            the size of the first dimension of the array returned.
+        """
         while True:
             els = self.read(numPerIter)[:]
             if els.shape[0] == 0:
@@ -88,9 +106,8 @@ class Stream():
         return "\n".join([str(i) for i in self.get_iter()])    
 
     def peek(self, numElems):
-        """ Inspect first `numElems` elements of the stream
-            without actually reading them, so that they still
-            are on top of the stream
+        """ Returns a numpy array of first `numElems` elements of the stream
+            without consuming them from the stream.
         """                
         self._ensureNumElems(numElems)
         # Take either numElems, or the entire head if not enough elements.
@@ -99,10 +116,9 @@ class Stream():
 
     #moves
     def read(self,numElems):
-        """ Returns a numpy array of first `numElems` elements
-            of the stream (they disappear from the stream).
-            If the an element is already a numpy array,
-            it will stack elements vertically.
+        """ Consumes first `numElems` elements of the stream and returns
+            a numpy array with them. 1d data is concatenated, 2d data is
+            stacked vertically.
         """
         self._ensureNumElems(numElems)
         # Take either numElems, or the entire head if not enough elements.
@@ -120,7 +136,7 @@ class Stream():
     def chunked(self, length, overlap):
         """ Returns a stream of 1 more dimension, consisting of chunks
             of form |overlap|length - 2*overlap|overlap|
-            based on the original stream
+            based on the original stream.
         """
         def new_gen():
             buffer = self.read(length)
@@ -136,19 +152,18 @@ class Stream():
 
 
     def merge(*args, chunk_size=100000):
-        """ Returns a stream with columns corresponding to streams.
+        """ Returns a stream with columns corresponding to streams passed to it.
             Can be used both as `Stream.merge` and `obj.merge`,
             since it takes streams as arguments anyway.
-            Ends when one of the streams ends.
-
+            
+            Ends when one of the streams ends. 
             Works only with 1d or 2d data in the same format.
-
-            When stacking arrays must be of similar shapes,
-            therefore we first stack all 1d arrays, and then stack them
-            with the 2d arrays.
         """
         def gen():
             while True:
+                # When stacking, arrays must be of similar shapes,
+                # therefore we first stack all 1d arrays, and then stack them
+                # with the 2d arrays.
                 lst1dim = []
                 lst2dim = []
                 for stm in args:
@@ -164,18 +179,6 @@ class Stream():
         return Stream(gen())
     
 
-
-
-def stm(n):
-    return Stream(np.array([i, i+1]).T for i in range(n))
-
-
-def get_simple_stream():
-    return Stream(np.arange(3*i, 3*i+3) for i in range(10))
-
-stm1 = get_simple_stream()
-stm2 = Stream.merge(get_simple_stream(), get_simple_stream())
-merged = Stream.merge(stm1, stm2)
 
 # Stream can be either 1-dimensional, representing
 # one channel with respect to time, or it can be
