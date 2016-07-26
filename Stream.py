@@ -37,7 +37,7 @@ class ArfStreamer():
                 buffer = dataset[offset:offset+chunk]
                 yield buffer
                 offset += chunk
-        return Stream(gen(path, chunk_size))
+        return Stream(gen(path, chunk_size), chunk_size=chunk_size)
 
 
     def save(stream, filename, path, chunk_size=1000000):
@@ -61,8 +61,12 @@ class ArfStreamer():
                     break
                 arf.append_data(dst, data)
 
+
+# class DatStreamer():
+#     def save(stream, filename)
+
 class Stream():
-    def __init__(self, gen, head = None):
+    def __init__(self, gen, chunk_size=1000000, head=None):
         self.gen = gen
         # Head stores the chunk we get from the generator,
         # so that we can peek or read however many elements we want.
@@ -71,6 +75,8 @@ class Stream():
         else:
             # We take a chunk immediately, to learn the shape.
             self.head = next(self.gen)
+
+        self.chunk_size = chunk_size
 
         self.element_shape = self.head[0].shape
 
@@ -91,10 +97,12 @@ class Stream():
             except StopIteration:
                 return
 
-    def get_iter(self, numPerIter=1):
+    def get_iter(self, numPerIter=None):
         """ Return an iterator for the stream, `numPerIter` is
             the size of the first dimension of the array returned.
         """
+        if numPerIter == None:
+            numPerIter = self.chunk_size
         while True:
             els = self.read(numPerIter)[:]
             if els.shape[0] == 0:
@@ -128,9 +136,11 @@ class Stream():
         return res    
 
     #passes
-    def map(self, func, chunk_size=1000000, *args, **kwargs):
+    def map(self, func, chunk_size=None, *args, **kwargs):
+        if chunk_size == None:
+            chunk_size = self.chunk_size
         return Stream((func(el, *args, **kwargs)
-                    for el in self.get_iter(chunk_size)))
+                    for el in self.get_iter(chunk_size)), chunk_size=chunk_size)
 
     #passes
     def chunked(self, length, overlap):
@@ -148,10 +158,10 @@ class Stream():
                     break
                 buffer[:overlap] = buffer[length-overlap:]
                 buffer[overlap:] = new_elems
-        return Stream(new_gen())
+        return Stream(new_gen(), chunk_size=1)
 
 
-    def merge(*args, chunk_size=100000):
+    def merge(*args, chunk_size=None):
         """ Returns a stream with columns corresponding to streams passed to it.
             Can be used both as `Stream.merge` and `obj.merge`,
             since it takes streams as arguments anyway.
@@ -159,6 +169,8 @@ class Stream():
             Ends when one of the streams ends. 
             Works only with 1d or 2d data in the same format.
         """
+        if chunk_size == None:
+            chunk_size = args[0].chunk_size
         def gen():
             while True:
                 # When stacking, arrays must be of similar shapes,
@@ -176,7 +188,7 @@ class Stream():
                         lst2dim.append(els)
                 lst2dim.append(np.column_stack(lst1dim))
                 yield np.hstack(lst2dim)
-        return Stream(gen())
+        return Stream(gen(), chunk_size=chunk_size)
     
 
 
