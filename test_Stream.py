@@ -69,7 +69,7 @@ def test_ArfStreamer():
     filename = "test.arf"
     path = "/path/to/be/tested"
     stm1 = get_simple_stream()
-    ArfStreamer.save(stm1, filename, path, chunk_size=10)
+    ArfStreamer.save(stm1, filename, path, chunk_size=10, sampling_rate=40000)
     with ArfStreamer(filename) as astm:
         stm2 = astm.stream_channel(path, chunk_size=15)
         read2 = stm2.read(1000)

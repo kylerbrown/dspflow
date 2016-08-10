@@ -19,31 +19,76 @@ class ArfStreamer():
         self.file.close()
 
     
-    def stream_channel(self, path, chunk_size=1000000):
+    def stream_channel(self, path, chunk_size=1000000, num_samples=None):
         """ Returns a Stream object wrapping the dataset at `path`.
             `chunk_size` is the size of the chunk in which values are yielded;
-            the bigger the better, as long as it fits in the memory
+            the bigger the better, as long as it fits in the memory.
+            If `num_samples` is specified, it returns up to that many elements.
         """
         def gen(path, chunk_size):
             dataset = self.file[path]
-            length = len(dataset)
+            if num_samples != None:
+                length = num_samples
+            else:
+                length = len(dataset)
             offset = 0
             while offset < length:
                 if length - offset > chunk_size:
                     chunk = chunk_size
                 else:
                     chunk = length - offset
-                print("processing new batch {0}".format(offset))
+                print("processing new batch {0} of {1} ({2:.2%})".format(
+                    offset, length, offset/length))
                 buffer = dataset[offset:offset+chunk]
                 yield buffer
                 offset += chunk
         return Stream(gen(path, chunk_size), chunk_size=chunk_size)
 
 
-    def save(stream, filename, path, chunk_size=1000000):
+    def stream_channels(self, paths, chunk_size=10000000):
+        """ Return a Stream object wrapping a concatenation od datasets at `paths`.
+            Each dataset must be 1-d or 2-d (if 2-d, then time is the vertical axis),
+            and they are stacked as columns. In theory should be faster than
+            multiple `stream_channel` and `merge` calls, but depends on the number of datasets
+            and on the `chunk_size`.
+        """
+        def gen(paths, chunk_size):
+            datasets = [self.file[path] for path in paths]
+            length = len(datasets[0]) # Assume all are the same size
+            offset = 0
+            col_sizes = [dataset.shape[0] if dataset.ndim>1 else 1 for dataset in datasets]
+            total_cols = sum(col_sizes)
+            buf = None
+            while offset < length:
+                if length - offset > chunk_size:
+                    chunk = chunk_size
+                    if buf == None:
+                        buf = np.zeros((chunk, total_cols))
+                else:
+                    chunk = length - offset
+                    buf = np.zeros((chunk, total_cols))
+                print("batch {0} of ({2:.2%}) from {3} datasets".format(
+                    offset, length, offset/length, len(datasets)))
+                running_col = 0
+                for (i, dst) in enumerate(datasets):
+                    num_cols = col_sizes[i]
+                    buf[:, running_col:(running_col + num_cols)] = dst[offset:(offset+chunk)].resize((num_cols, chunk))
+                yield buf
+                offset += chunk
+        return Stream(gen(paths, chunk_size), chunk_size=chunk_size)
+                    
+
+
+    def save(stream, filename, path, sampling_rate=None, chunk_size=None):
         """ Saves a Stream object to an .arf file.
             Can't be called by an instance of ArfStreamer.
         """
+        if chunk_size == None:
+            chunk_size = stream.chunk_size
+
+        if sampling_rate == None:
+            raise Exception("You must specify the sampling rate in ArfStreamer.save")
+        
         with arf.open_file(filename, 'w') as file:
             path = path.split("/")
             dst_name = path[-1]
@@ -54,7 +99,7 @@ class ArfStreamer():
             #Get first batch of data
             data = stream.read(chunk_size)
             dst = arf.create_dataset(grp, dst_name, data,
-                maxshape=(None,), sampling_rate=40000)
+                maxshape=(None,), sampling_rate=sampling_rate)
             while True:
                 data = stream.read(chunk_size)
                 if len(data) == 0:
@@ -62,8 +107,17 @@ class ArfStreamer():
                 arf.append_data(dst, data)
 
 
-# class DatStreamer():
-#     def save(stream, filename)
+class DatStreamer():
+    def save(stream, filename, truncate=True):
+        if truncate:
+            with open(filename, 'w+b') as f:
+                pass # Truncate the file first
+
+        for chunk in stream.get_iter():
+            # Repeatedly open the file in the appending mode
+            # Because numpy doesn't have an easy append function
+            with open(filename, 'a+b') as f:
+                chunk.tofile(f)
 
 class Stream():
     def __init__(self, gen, chunk_size=1000000, head=None):
