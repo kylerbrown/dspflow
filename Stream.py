@@ -4,9 +4,9 @@ import arf
 
 
 class ArfStreamer():
-    """ Wraps a h5py.File object. Works inside a with statement,
-        so that it's never left opened. You can access the File
-        methods using `astm.file.method()`
+    """ Wraps a h5py.File object. Should be used only inside a with statement
+        so that it's never left opened after the program. 
+        You can access the File methods using `arfstreamer.file`
     """
     def __init__(self, filename):
         self.filename = filename
@@ -111,11 +111,11 @@ class DatStreamer():
     def save(stream, filename, truncate=True):
         if truncate:
             with open(filename, 'w+b') as f:
-                pass # Truncate the file first
+                pass
 
         for chunk in stream.get_iter():
-            # Repeatedly open the file in the appending mode
-            # Because numpy doesn't have an easy append function
+            # Repeatedly open the file in the appending mode,
+            # because numpy doesn't have an easy append function
             with open(filename, 'a+b') as f:
                 chunk.tofile(f)
 
@@ -221,7 +221,7 @@ class Stream():
             since it takes streams as arguments anyway.
             
             Ends when one of the streams ends. 
-            Works only with 1d or 2d data in the same format.
+            Works only with 1-d and 2-d data where vertical direction is time.
         """
         if chunk_size == None:
             chunk_size = args[0].chunk_size
