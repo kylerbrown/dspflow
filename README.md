@@ -9,9 +9,11 @@ First make sure you have numpy and h5py installed (you should be using conda)
 
     conda install numpy h5py
 
-git clone https://github.com/kylerbrown/dspflow.git
-cd dspflow
-python setup.py install
+Then you can install:
+
+    git clone https://github.com/kylerbrown/dspflow.git
+    cd dspflow
+    python setup.py install
 
 
 ## Usage
