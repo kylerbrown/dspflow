@@ -1,4 +1,4 @@
-from Stream import Stream, ArfStreamer
+from dspflow import Stream, ArfStreamer
 import numpy as np
 import os
 
