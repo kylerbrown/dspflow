@@ -61,7 +61,7 @@ class ArfStreamer():
             while offset < length:
                 if length - offset > chunk_size:
                     chunk = chunk_size
-                    if buf == None:
+                    if buf is None:
                         buf = np.zeros((chunk, total_cols))
                 else:
                     chunk = length - offset
