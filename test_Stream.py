@@ -1,12 +1,12 @@
-from Stream import Stream, ArfStreamer
+from dspflow import Stream, ArfStreamer
 import numpy as np
+import os
 
 def get_simple_stream():
     return Stream(np.arange(3*i, 3*i+3) for i in range(10))
 
 def rowlen(arr):
     return arr.shape[0]
-
 
 
 def test_ensureNumElems():
@@ -70,9 +70,23 @@ def test_ArfStreamer():
     filename = "test.arf"
     path = "/path/to/be/tested"
     stm1 = get_simple_stream()
-    ArfStreamer.save(stm1, filename, path, chunk_size=10)
-    stm2 = ArfStreamer.open(filename, path, chunk_size=15)
-    read2 = stm2.read(1000)
+    ArfStreamer.save(stm1, filename, path, chunk_size=10, sampling_rate=40000)
+    with ArfStreamer(filename) as astm:
+        stm2 = astm.stream_channel(path, chunk_size=15)
+        read2 = stm2.read(1000)
     assert np.array_equal(read2, np.arange(0,30))
+
+    channels = ['entry/channel'+str(i) for i in range(3)]
+    for i in range(3):
+        stm = get_simple_stream()
+        ArfStreamer.save(stm.map(lambda chunk, i=i: chunk * i),
+            filename, channels[i], chunk_size=10, sampling_rate=40000)
+    
+    with ArfStreamer(filename) as astm:
+        read_stm = astm.stream_channels(channels, chunk_size=15)
+        read = read_stm.read(1000)
+    print(read)
+    assert np.array_equal(read[:,i], np.arange(0,30)*i)
+    os.remove('test.arf')
 
 
